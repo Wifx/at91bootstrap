@@ -2,3 +2,4 @@
 # Config.in.boardname for contributed board name
 #
 source "contrib/board/l+g/vinco/Config.in.boardname"
+source "contrib/board/wifx/sama5d4_lorix_one/Config.in.boardname"

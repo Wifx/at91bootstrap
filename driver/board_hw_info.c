@@ -384,6 +384,14 @@ static unsigned int set_default_sn(void)
 	board_id_ek = BOARD_ID_SAMA5D4_MB;
 	vendor_cm = VENDOR_EMBEST;
 	vendor_dm = VENDOR_FLEX;
+#elif defined(CONFIG_SAMA5D4_LORIX_ONE)
+    /*
+     * LORIX One
+     * Display Module: no
+     * EK Module: SAMA5D4_LORIX_ONE, LORIX
+     */
+    board_id_ek = BOARD_ID_SAMA5D4_LORIX_ONE;
+    vendor_cm = VENDOR_LORIX;
 #else
 #error "OneWire: No defined board"
 #endif
@@ -443,6 +451,18 @@ static unsigned int set_default_rev(void)
 	rev_id_cm = '0';
 	rev_id_dm = '2';
 	rev_id_ek = '3';
+#elif defined(CONFIG_SAMA5D4_LORIX_ONE)
+    /*
+     * LORIX One
+     * Display Module: 'B', '2'
+     * EK Module: 'B','3'
+     */
+    rev_cm = 'A';
+    rev_dm = 'A';
+    rev_ek = 'A';
+    rev_id_cm = '1';
+    rev_id_dm = '1';
+    rev_id_ek = '1';
 #else
 #error "OneWire: No defined board"
 #endif

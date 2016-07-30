@@ -2,3 +2,4 @@
 # Config.in.board for the contributed board configuration
 #
 source "contrib/board/l+g/vinco/Config.in.linux_arg"
+source "contrib/board/wifx/sama5d4_lorix_one/Config.in.linux_arg"

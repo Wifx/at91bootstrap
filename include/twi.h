@@ -32,6 +32,7 @@ extern unsigned char hdmi_twi_bus;
 extern unsigned char wm8904_twi_bus;
 extern unsigned char act8865_twi_bus;
 extern unsigned char at24xx_twi_bus;
+extern unsigned char attiny_twi_bus;
 
 extern unsigned int twi_init_done;
 
