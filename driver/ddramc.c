@@ -28,6 +28,7 @@
  */
 #include "hardware.h"
 #include "arch/at91_ddrsdrc.h"
+#include "arch/at91_sfr.h"
 #include "debug.h"
 #include "ddramc.h"
 #include "timer.h"
@@ -40,7 +41,8 @@ static void write_ddramc(unsigned int address,
 	writel(value, (address + offset));
 }
 
-#if defined(CONFIG_DDR2) || defined(CONFIG_LPDDR2)
+#if defined(CONFIG_DDR2) || defined(CONFIG_LPDDR2)  || \
+    defined(CONFIG_LPDDR3)
 /* read DDRC registers */
 static unsigned int read_ddramc(unsigned int address, unsigned int offset)
 {
@@ -80,8 +82,8 @@ int ddram_initialize(unsigned int base_address,
 	 */
 	write_ddramc(base_address, HDDRSDRC2_MDR, ddramc_config->mdr);
 
-	/* 
-	 * Step 2: Program the feature of DDR2-SDRAM device into 
+	/*
+	 * Step 2: Program the feature of DDR2-SDRAM device into
 	 * the Timing Register, and into the Configuration Register
 	 */
 	write_ddramc(base_address, HDDRSDRC2_CR, ddramc_config->cr);
@@ -286,24 +288,31 @@ int ddram_initialize(unsigned int base_address,
 
 #elif defined(CONFIG_LPDDR2)
 
-int lpddr2_sdram_initialize(unsigned int base_address,
-			unsigned int ram_address,
-			struct ddramc_register *ddramc_config)
-{
-	unsigned int cr;
+/*
+ * This is the sama5d2-compatible initialization sequence for LP-DDR2
+ * Check after the #else for sama5d3 and sama5d4 LP-DDR2 initialization sequence
+ */
+#if defined(CONFIG_SAMA5D2_LPDDR2)
 
-	write_ddramc(base_address, MPDDRC_LPDDR2_LPR,
-				ddramc_config->lpddr2_lpr);
+int lpddr2_sdram_initialize(unsigned int base_address,
+			    unsigned int ram_address,
+			    struct ddramc_register *ddramc_config)
+{
+	unsigned int reg;
+
+	write_ddramc(base_address,
+		     MPDDRC_LPDDR2_LPR, ddramc_config->lpddr2_lpr);
+
+	write_ddramc(base_address,
+		     MPDDRC_LPDDR2_TIM_CAL, ddramc_config->tim_calr);
 
 	/*
-	 * Step 1: Program the memory device type into
-	 * the Memory Device Register
+	 * Step 1: Program the memory device type.
 	 */
 	write_ddramc(base_address, HDDRSDRC2_MDR, ddramc_config->mdr);
 
 	/*
-	 * Step 2: Program the feature of Low-power DDR2-SDRAM device into
-	 * the Timing Register, and into the Configuration Register
+	 * Step 2: Program the feature of the low-power DDR2-SDRAM device.
 	 */
 	write_ddramc(base_address, HDDRSDRC2_CR, ddramc_config->cr);
 
@@ -312,130 +321,360 @@ int lpddr2_sdram_initialize(unsigned int base_address,
 	write_ddramc(base_address, HDDRSDRC2_T2PR, ddramc_config->t2pr);
 
 	/*
-	 * Step 3: An NOP command is issued to the Low-power DDR2-SDRAM
-	 * Program the NOP command into the Mode Register, the application must
-	 * set the MODE field to 1 in the Mode Register. Perform a write access
-	 * to any Low-power DDR2-SDRAM address to acknowledge this command.
-	 * Now, clocks which drive Low-power DDR2-SDRAM device is enabled.
+	 * Step 3: A NOP command is issued to the low-power DDR2-SDRAM.
 	 */
 	write_ddramc(base_address, HDDRSDRC2_MR, AT91C_DDRC2_MODE_NOP_CMD);
+
+	/*
+	 * Step 3bis: Add memory barrier then Perform a write access to
+	 * any low-power DDR2-SDRAM address to acknowledge the command.
+	 */
+	asm volatile ("dmb");
 	*((unsigned volatile int *)ram_address) = 0;
 
 	/*
-	 * A minimum pause of 100 ns must be reserved
-	 * to precede any single toggle
+	 * Step 4: A pause of at least 100 ns must be observed before
+	 * a single toggle.
 	 */
 	udelay(1);
 
 	/*
-	 * Step 4:  An NOP command is issued to the Low-power DDR2-SDRAM.
-	 * Now, CKE is drive high.
+	 * Step 5: A NOP command is issued to the low-power DDR2-SDRAM.
 	 */
 	write_ddramc(base_address, HDDRSDRC2_MR, AT91C_DDRC2_MODE_NOP_CMD);
+	asm volatile ("dmb");
 	*((unsigned volatile int *)ram_address) = 0;
 
-	/* A minimum pause of 200us must be satisfied before Reset Command*/
+	/*
+	 * Step 6: A pause of at least 200 us must be observed before a Reset
+	 * Command.
+	 */
 	udelay(200);
 
 	/*
-	 * Step 5: A reset command is issued to the Low-power DDR2-SDRAM.
-	 * Now, the reset command is issued.
+	 * Step 7: A Reset command is issued to the low-power DDR2-SDRAM.
 	 */
 	write_ddramc(base_address, HDDRSDRC2_MR,
-			AT91C_DDRC2_MRS(63) | AT91C_DDRC2_MODE_LPDDR2_CMD);
+		     AT91C_DDRC2_MRS(63) | AT91C_DDRC2_MODE_LPDDR2_CMD);
+	asm volatile ("dmb");
 	*((unsigned volatile int *)ram_address) = 0;
 
-	/* A minimum pause of 1 us must be satisfied befor any commands */
+	/*
+	 * Step 8: A pause of at least tINIT5 must be observed before issuing
+	 * any commands.
+	 */
 	udelay(1);
 
 	/*
-	 * Step 6: A Mode Register Read command is issued to the Low-power
-	 * DDR2-SDRAM. Now, the Mode Register Read command is issued.
+	 * Step 9: A Calibration command is issued to the low-power DDR2-SDRAM.
 	 */
-	write_ddramc(base_address, HDDRSDRC2_MR,
-			AT91C_DDRC2_MRS(0) | AT91C_DDRC2_MODE_LPDDR2_CMD);
-	*((unsigned volatile int *)ram_address) = 0;
-
-	/* A minimum pause of 10 us must be satified before any commands */
-	udelay(10);
-
-	/*
-	 * Step 7: a calibration command is issued to the Low-power DDR2-SDRAM.
-	 * Now, the ZQ Calibration command is issued.
-	 */
-	cr = read_ddramc(base_address, HDDRSDRC2_CR);
-	cr &= ~AT91C_DDRC2_ZQ;
-	cr |= AT91C_DDRC2_ZQ_RESET;
-	write_ddramc(base_address, HDDRSDRC2_CR, cr);
+	reg = read_ddramc(base_address, HDDRSDRC2_CR);
+	reg &= ~AT91C_DDRC2_ZQ;
+	reg |= AT91C_DDRC2_ZQ_RESET;
+	write_ddramc(base_address, HDDRSDRC2_CR, reg);
 
 	write_ddramc(base_address, HDDRSDRC2_MR,
-			AT91C_DDRC2_MRS(10) | AT91C_DDRC2_MODE_LPDDR2_CMD);
+		     AT91C_DDRC2_MRS(10) | AT91C_DDRC2_MODE_LPDDR2_CMD);
+	asm volatile ("dmb");
 	*((unsigned volatile int *)ram_address) = 0;
-	udelay(1);
-
-	cr = read_ddramc(base_address, HDDRSDRC2_CR);
-	cr &= ~AT91C_DDRC2_ZQ;
-	cr |= AT91C_DDRC2_ZQ_SHORT;
-	write_ddramc(base_address, HDDRSDRC2_CR, cr);
 
 	/*
-	 * Step 8: A Mode Register Write command is issued to the Low-power
-	 * DDR2-SDRAM. Now, the Mode Register Write command is issued.
+	 * Step 9bis: The ZQ Calibration command is now issued.
+	 * Program the type of calibration in the MPDDRC_CR: set the
+	 * ZQ field to the SHORT value.
+	 */
+	reg = read_ddramc(base_address, HDDRSDRC2_CR);
+	reg &= ~AT91C_DDRC2_ZQ;
+	reg |= AT91C_DDRC2_ZQ_SHORT;
+	write_ddramc(base_address, HDDRSDRC2_CR, reg);
+
+	/*
+	 * Step 10: A Mode Register Write command with 1 to the MRS field
+	 * is issued to the low-power DDR2-SDRAM.
 	 */
 	write_ddramc(base_address, HDDRSDRC2_MR,
-			AT91C_DDRC2_MRS(1) | AT91C_DDRC2_MODE_LPDDR2_CMD);
+		     AT91C_DDRC2_MRS(1) | AT91C_DDRC2_MODE_LPDDR2_CMD);
+	asm volatile ("dmb");
 	*((unsigned volatile int *)ram_address) = 0;
-	udelay(1);
 
 	/*
-	 * Step 9: A Mode Register Write command is issued to the Low-power
-	 * DDR2-SDRAM. Now, the Mode Register Write command is issued.
+	 * Step 11: A Mode Register Write command with 2 to the MRS field
+	 * is issued to the low-power DDR2-SDRAM.
 	 */
 	write_ddramc(base_address, HDDRSDRC2_MR,
-			AT91C_DDRC2_MRS(2) | AT91C_DDRC2_MODE_LPDDR2_CMD);
+		     AT91C_DDRC2_MRS(2) | AT91C_DDRC2_MODE_LPDDR2_CMD);
+	asm volatile ("dmb");
 	*((unsigned volatile int *)ram_address) = 0;
-	udelay(1);
 
 	/*
-	 * Step 10: A Mode Register Write command is issued to the Low-power
-	 * DDR2-SDRAM. Now, the Mode Register Write command is issued.
+	 * Step 12: A Mode Register Write command with 3 to the MRS field
+	 * is issued to the low-power DDR2-SDRAM.
 	 */
 	write_ddramc(base_address, HDDRSDRC2_MR,
-			AT91C_DDRC2_MRS(3) | AT91C_DDRC2_MODE_LPDDR2_CMD);
+		     AT91C_DDRC2_MRS(3) | AT91C_DDRC2_MODE_LPDDR2_CMD);
+	asm volatile ("dmb");
 	*((unsigned volatile int *)ram_address) = 0;
-	udelay(1);
 
 	/*
-	 * Step 11: A Mode Register Write command is issued to the Low-power
-	 * DDR2-SDRAM. Now, the Mode Register Write command is issued.
+	 * Step 13: A Mode Register Write command with 16 to the MRS field
+	 * is issued to the low-power DDR2-SDRAM.
 	 */
 	write_ddramc(base_address, HDDRSDRC2_MR,
-			AT91C_DDRC2_MRS(16) | AT91C_DDRC2_MODE_LPDDR2_CMD);
+		     AT91C_DDRC2_MRS(16) | AT91C_DDRC2_MODE_LPDDR2_CMD);
+	asm volatile ("dmb");
 	*((unsigned volatile int *)ram_address) = 0;
-	udelay(1);
 
 	/*
-	 * Step 12: Write the refresh rate into the COUNT field in
-	 * the Refresh Timer register.
+	 * Step 14: In the DDR Configuration Register, open the input buffers.
+	 */
+	reg = readl(AT91C_BASE_SFR + SFR_DDRCFG);
+	reg |= AT91C_DDRCFG_FDQIEN;
+	reg |= AT91C_DDRCFG_FDQSIEN;
+	writel(reg, AT91C_BASE_SFR + SFR_DDRCFG);
+
+	/*
+	 * Step 15: A NOP command is issued to the low-power DDR2-SDRAM.
+	 */
+	write_ddramc(base_address, HDDRSDRC2_MR, AT91C_DDRC2_MODE_NOP_CMD);
+	asm volatile ("dmb");
+	*((unsigned volatile int *)ram_address) = 0;
+
+	/*
+	 * Step 16: A Mode Register Read command with 5 to the MRS field
+	 * is issued to the low-power DDR2-SDRAM.
+	 */
+	write_ddramc(base_address, HDDRSDRC2_MR,
+		     AT91C_DDRC2_MRS(5) | AT91C_DDRC2_MODE_LPDDR2_CMD);
+	asm volatile ("dmb");
+	*((unsigned volatile int *)ram_address) = 0;
+
+	/*
+	 * Step 17: A Mode Register Read command with 6 to the MRS field
+	 * is issued to the low-power DDR2-SDRAM.
+	 */
+	write_ddramc(base_address, HDDRSDRC2_MR,
+		     AT91C_DDRC2_MRS(6) | AT91C_DDRC2_MODE_LPDDR2_CMD);
+	asm volatile ("dmb");
+	*((unsigned volatile int *)ram_address) = 0;
+
+	/*
+	 * Step 18: A Mode Register Read command with 8 to the MRS field
+	 * is issued to the low-power DDR2-SDRAM.
+	 */
+	write_ddramc(base_address, HDDRSDRC2_MR,
+		     AT91C_DDRC2_MRS(8) | AT91C_DDRC2_MODE_LPDDR2_CMD);
+	asm volatile ("dmb");
+	*((unsigned volatile int *)ram_address) = 0;
+
+	/*
+	 * Step 19: A Mode Register Read command with 0 to the MRS field
+	 * is issued to the low-power DDR2-SDRAM.
+	 */
+	write_ddramc(base_address, HDDRSDRC2_MR,
+		     AT91C_DDRC2_MRS(0) | AT91C_DDRC2_MODE_LPDDR2_CMD);
+	asm volatile ("dmb");
+	*((unsigned volatile int *)ram_address) = 0;
+
+	/*
+	 * Step 20: A Normal Mode command is provided.
+	 */
+	write_ddramc(base_address, HDDRSDRC2_MR, AT91C_DDRC2_MODE_NORMAL_CMD);
+	asm volatile ("dmb");
+	*((unsigned int *)ram_address) = 0;
+
+	/*
+	 * Step 21: In the DDR Configuration Register, close the input buffers.
+	 */
+	reg = readl(AT91C_BASE_SFR + SFR_DDRCFG);
+	reg &= ~AT91C_DDRCFG_FDQIEN;
+	reg &= ~AT91C_DDRCFG_FDQSIEN;
+	writel(reg, AT91C_BASE_SFR + SFR_DDRCFG);
+
+	/*
+	 * Step 22: Write the refresh rate into the COUNT field in the MPDDRC
+	 * Refresh Timer Register.
 	 */
 	write_ddramc(base_address, HDDRSDRC2_RTR, ddramc_config->rtr);
 
-	write_ddramc(base_address, HDDRSDRC2_MR, AT91C_DDRC2_MODE_NORMAL_CMD);
-	*((unsigned volatile int *)ram_address) = 0;
-	udelay(1);
-
-	/* Launch short ZQ calibration */
-	cr = read_ddramc(base_address, HDDRSDRC2_CR);
-	cr &= ~AT91C_DDRC2_ZQ;
-	cr |= AT91C_DDRC2_ZQ_SHORT;
-	write_ddramc(base_address, HDDRSDRC2_CR, cr);
-	*((unsigned volatile int *)ram_address) = 0;
-
-	write_ddramc(base_address, MPDDRC_LPDDR2_TIM_CAL,
-						ddramc_config->tim_calr);
+	/*
+	 * Now configure the CAL MR4 register.
+	 */
+	write_ddramc(base_address,
+		     MPDDRC_LPDDR2_CAL_MR4, ddramc_config->cal_mr4r);
 
 	return 0;
 }
+
+#else
+
+int lpddr2_sdram_initialize(unsigned int base_address,
+			    unsigned int ram_address,
+			    struct ddramc_register *ddramc_config)
+{
+	unsigned int reg;
+
+	write_ddramc(base_address,
+		     MPDDRC_LPDDR2_LPR, ddramc_config->lpddr2_lpr);
+
+	write_ddramc(base_address,
+		     MPDDRC_LPDDR2_TIM_CAL, ddramc_config->tim_calr);
+
+	/*
+	 * Step 1: Program the memory device type.
+	 */
+	write_ddramc(base_address, HDDRSDRC2_MDR, ddramc_config->mdr);
+
+	/*
+	 * Step 2: Program the feature of the low-power DDR2-SDRAM device.
+	 */
+	write_ddramc(base_address, HDDRSDRC2_CR, ddramc_config->cr);
+
+	write_ddramc(base_address, HDDRSDRC2_T0PR, ddramc_config->t0pr);
+	write_ddramc(base_address, HDDRSDRC2_T1PR, ddramc_config->t1pr);
+	write_ddramc(base_address, HDDRSDRC2_T2PR, ddramc_config->t2pr);
+
+#if 0 /* Adjust Refresh function: we don't use the feature */
+	/*
+	 * Step 2bis: As we don't use the Adjust Refresh function, no need
+	 * to open the input buffers.
+	 */
+	reg = readl(AT91C_BASE_SFR + SFR_DDRCFG);
+	reg |= AT91C_DDRCFG_FDQIEN;
+	reg |= AT91C_DDRCFG_FDQSIEN;
+	writel(reg, AT91C_BASE_SFR + SFR_DDRCFG);
+#endif
+
+	/*
+	 * Step 3: A NOP command is issued to the low-power DDR2-SDRAM.
+	 */
+	write_ddramc(base_address, HDDRSDRC2_MR, AT91C_DDRC2_MODE_NOP_CMD);
+
+	/*
+	 * Step 3bis: Add memory barrier then Perform a write access to
+	 * any low-power DDR2-SDRAM address to acknowledge the command.
+	 */
+	asm volatile ("dmb");
+	*((unsigned volatile int *)ram_address) = 0;
+
+	/*
+	 * Step 4: A pause of at least 100 ns must be observed before
+	 * a single toggle.
+	 */
+	udelay(1);
+
+	/*
+	 * Step 5: A NOP command is issued to the low-power DDR2-SDRAM.
+	 */
+	write_ddramc(base_address, HDDRSDRC2_MR, AT91C_DDRC2_MODE_NOP_CMD);
+	asm volatile ("dmb");
+	*((unsigned volatile int *)ram_address) = 0;
+
+	/*
+	 * Step 6: A pause of at least 200 us must be observed before a Reset
+	 * Command.
+	 */
+	udelay(200);
+
+	/*
+	 * Step 7: A Reset command is issued to the low-power DDR2-SDRAM.
+	 */
+	write_ddramc(base_address, HDDRSDRC2_MR,
+		     AT91C_DDRC2_MRS(63) | AT91C_DDRC2_MODE_LPDDR2_CMD);
+	asm volatile ("dmb");
+	*((unsigned volatile int *)ram_address) = 0;
+
+	/*
+	 * Step 8: A pause of at least tINIT5 must be observed before issuing
+	 * any commands.
+	 */
+	udelay(1);
+
+	/*
+	 * Step 9: A Calibration command is issued to the low-power DDR2-SDRAM.
+	 */
+	reg = read_ddramc(base_address, HDDRSDRC2_CR);
+	reg &= ~AT91C_DDRC2_ZQ;
+	reg |= AT91C_DDRC2_ZQ_RESET;
+	write_ddramc(base_address, HDDRSDRC2_CR, reg);
+
+	write_ddramc(base_address, HDDRSDRC2_MR,
+		     AT91C_DDRC2_MRS(10) | AT91C_DDRC2_MODE_LPDDR2_CMD);
+	asm volatile ("dmb");
+	*((unsigned volatile int *)ram_address) = 0;
+
+	/*
+	 * Step 9bis: The ZQ Calibration command is now issued.
+	 * Program the type of calibration in the MPDDRC_CR: set the
+	 * ZQ field to the SHORT value.
+	 */
+	reg = read_ddramc(base_address, HDDRSDRC2_CR);
+	reg &= ~AT91C_DDRC2_ZQ;
+	reg |= AT91C_DDRC2_ZQ_SHORT;
+	write_ddramc(base_address, HDDRSDRC2_CR, reg);
+
+	/*
+	 * Step 10: A Mode Register Write command with 1 to the MRS field
+	 * is issued to the low-power DDR2-SDRAM.
+	 */
+	write_ddramc(base_address, HDDRSDRC2_MR,
+		     AT91C_DDRC2_MRS(1) | AT91C_DDRC2_MODE_LPDDR2_CMD);
+	asm volatile ("dmb");
+	*((unsigned volatile int *)ram_address) = 0;
+
+	/*
+	 * Step 11: A Mode Register Write command with 2 to the MRS field
+	 * is issued to the low-power DDR2-SDRAM.
+	 */
+	write_ddramc(base_address, HDDRSDRC2_MR,
+		     AT91C_DDRC2_MRS(2) | AT91C_DDRC2_MODE_LPDDR2_CMD);
+	asm volatile ("dmb");
+	*((unsigned volatile int *)ram_address) = 0;
+
+	/*
+	 * Step 12: A Mode Register Write command with 3 to the MRS field
+	 * is issued to the low-power DDR2-SDRAM.
+	 */
+	write_ddramc(base_address, HDDRSDRC2_MR,
+		     AT91C_DDRC2_MRS(3) | AT91C_DDRC2_MODE_LPDDR2_CMD);
+	asm volatile ("dmb");
+	*((unsigned volatile int *)ram_address) = 0;
+
+	/*
+	 * Step 13: A Mode Register Write command with 16 to the MRS field
+	 * is issued to the low-power DDR2-SDRAM.
+	 */
+	write_ddramc(base_address, HDDRSDRC2_MR,
+		     AT91C_DDRC2_MRS(16) | AT91C_DDRC2_MODE_LPDDR2_CMD);
+	asm volatile ("dmb");
+	*((unsigned volatile int *)ram_address) = 0;
+
+	/*
+	 * Step 14: A Normal Mode command is provided.
+	 */
+	write_ddramc(base_address, HDDRSDRC2_MR, AT91C_DDRC2_MODE_NORMAL_CMD);
+	asm volatile ("dmb");
+	*((unsigned int *)ram_address) = 0;
+
+	/*
+	 * Step 15: close the input buffers: error in documentation: no need.
+	 */
+
+	/*
+	 * Step 16: Write the refresh rate into the COUNT field in the MPDDRC
+	 * Refresh Timer Register.
+	 */
+	write_ddramc(base_address, HDDRSDRC2_RTR, ddramc_config->rtr);
+
+	/*
+	 * Now configure the CAL MR4 register.
+	 */
+	write_ddramc(base_address,
+		     MPDDRC_LPDDR2_CAL_MR4, ddramc_config->cal_mr4r);
+
+	return 0;
+}
+
+#endif
 
 #elif defined(CONFIG_DDR3)
 
@@ -453,6 +692,9 @@ int ddr3_sdram_initialize(unsigned int base_address,
 	ba_offset += (ddramc_config->mdr & AT91C_DDRC2_DBW) ? 1 : 2;
 
 	dbg_very_loud(" ba_offset = %x ...\n", ba_offset);
+
+	write_ddramc(base_address,
+		     MPDDRC_LPDDR2_TIM_CAL, ddramc_config->tim_calr);
 
 	/*
 	 * Step 1: Program the memory device type in the MPDDRC Memory Device Register
@@ -576,6 +818,195 @@ int ddr3_sdram_initialize(unsigned int base_address,
 	 * Refresh Timer Register (MPDDRC_RTR):
 	 * refresh rate = delay between refresh cycles.
 	 * The DDR3-SDRAM device requires a refresh every 7.81 us.
+	 */
+	write_ddramc(base_address, HDDRSDRC2_RTR, ddramc_config->rtr);
+
+	/*
+	 * Now configure the CAL MR4 register.
+	 */
+	write_ddramc(base_address,
+		     MPDDRC_LPDDR2_CAL_MR4, ddramc_config->cal_mr4r);
+
+	return 0;
+}
+
+#elif defined(CONFIG_LPDDR3)
+int lpddr3_sdram_initialize(unsigned int base_address,
+			    unsigned int ram_address,
+			    struct ddramc_register *ddramc_config)
+{
+	unsigned int reg;
+
+	write_ddramc(base_address, MPDDRC_LPDDR2_LPR,
+		     ddramc_config->lpddr2_lpr);
+
+	/*
+	 * Step 1: Program the memory device type in the MPDDRC Memory
+	 * Device Register.
+	 */
+	write_ddramc(base_address, HDDRSDRC2_MDR, ddramc_config->mdr);
+
+	/*
+	 * Step 2: Program features of the low-power DDR3-SDRAM device
+	 * in the MPDDRC Configuration Register and in the MPDDRC Timing
+	 * Parameter 0 Register/MPDDRC Timing Parameter 1 Register.
+	 */
+	write_ddramc(base_address, HDDRSDRC2_CR, ddramc_config->cr);
+
+	write_ddramc(base_address, HDDRSDRC2_T0PR, ddramc_config->t0pr);
+	write_ddramc(base_address, HDDRSDRC2_T1PR, ddramc_config->t1pr);
+	write_ddramc(base_address, HDDRSDRC2_T2PR, ddramc_config->t2pr);
+
+	/*
+	 * Step 3: A NOP command is issued to the low-power DDR3-SDRAM.
+	 */
+	write_ddramc(base_address, HDDRSDRC2_MR, AT91C_DDRC2_MODE_NOP_CMD);
+	*((unsigned volatile int *)ram_address) = 0;
+
+	/*
+	 * Step 4: A pause of at least 100ns must be observed before
+	 * a single toggle.
+	 */
+	 udelay(1);
+
+	/*
+	 * Step 5: A NOP command is issued to the low-power DDR3-SDRAM.
+	 */
+	write_ddramc(base_address, HDDRSDRC2_MR, AT91C_DDRC2_MODE_NOP_CMD);
+	*((unsigned volatile int *)ram_address) = 0;
+
+	/*
+	 * Step 6: A pause of at least 200us must be observed before issuing
+	 * a Reset Command
+	 */
+	udelay(200);
+
+	/*
+	 * Step 7: A Reset command is issued to the Low-power DDR3-SDRAM.
+	 */
+	write_ddramc(base_address, HDDRSDRC2_MR,
+		     AT91C_DDRC2_MRS(63) | AT91C_DDRC2_MODE_LPDDR2_CMD);
+	*((unsigned volatile int *)ram_address) = 0;
+
+	/*
+	 * Step 8: A pause of at least tINIT5 must be observed before issuing
+	 * any commands.
+	 */
+	udelay(1);
+
+	/*
+	 * Step 9: A Calibration command is issued to the low-power DDR3-SDRAM.
+	 */
+	reg = read_ddramc(base_address, HDDRSDRC2_CR);
+	reg &= ~AT91C_DDRC2_ZQ;
+	reg |= AT91C_DDRC2_ZQ_RESET;
+	write_ddramc(base_address, HDDRSDRC2_CR, reg);
+
+	write_ddramc(base_address, HDDRSDRC2_MR,
+		     AT91C_DDRC2_MRS(10) | AT91C_DDRC2_MODE_LPDDR2_CMD);
+	*((unsigned volatile int *)ram_address) = 0;
+
+	reg = read_ddramc(base_address, HDDRSDRC2_CR);
+	reg &= ~AT91C_DDRC2_ZQ;
+	reg |= AT91C_DDRC2_ZQ_SHORT;
+	write_ddramc(base_address, HDDRSDRC2_CR, reg);
+
+	/*
+	 * Step 10: A Mode Register Write command with 1 to the MRS field
+	 * is issued to the low-power DDR3-SDRAM.
+	 */
+	write_ddramc(base_address, HDDRSDRC2_MR,
+		     AT91C_DDRC2_MRS(1) | AT91C_DDRC2_MODE_LPDDR2_CMD);
+	*((unsigned volatile int *)ram_address) = 0;
+
+	/*
+	 * Step 11: A Mode Register Write command with 2 to the MRS field
+	 * is issued to the low-power DDR3-SDRAM.
+	 */
+	write_ddramc(base_address, HDDRSDRC2_MR,
+		     AT91C_DDRC2_MRS(2) | AT91C_DDRC2_MODE_LPDDR2_CMD);
+	*((unsigned volatile int *)ram_address) = 0;
+
+	/*
+	 * Step 12: A Mode Register Write command with 3 to the MRS field
+	 * is issued to the low-power DDR3-SDRAM.
+	 */
+	write_ddramc(base_address, HDDRSDRC2_MR,
+		     AT91C_DDRC2_MRS(3) | AT91C_DDRC2_MODE_LPDDR2_CMD);
+	*((unsigned volatile int *)ram_address) = 0;
+
+	/*
+	 * Step 13: A Mode Register Write command with 16 to the MRS field
+	 * is issued to the low-power DDR2-SDRAM.
+	 */
+	write_ddramc(base_address, HDDRSDRC2_MR,
+		     AT91C_DDRC2_MRS(16) | AT91C_DDRC2_MODE_LPDDR2_CMD);
+	*((unsigned volatile int *)ram_address) = 0;
+
+	/*
+	 * Step 14: In the DDR Configuration Register, open the input buffers.
+	 */
+	reg = readl(AT91C_BASE_SFR + SFR_DDRCFG);
+	reg |= AT91C_DDRCFG_FDQIEN;
+	reg |= AT91C_DDRCFG_FDQSIEN;
+	writel(reg, AT91C_BASE_SFR + SFR_DDRCFG);
+
+	/*
+	 * Step 15: A NOP command is issued to the low-power DDR3-SDRAM.
+	 */
+	write_ddramc(base_address, HDDRSDRC2_MR, AT91C_DDRC2_MODE_NOP_CMD);
+	*((unsigned volatile int *)ram_address) = 0;
+
+	/*
+	 * Step 16: A Mode Register Read command with 5 to the MRS field
+	 * is issued to the low-power DDR3-SDRAM.
+	 */
+	write_ddramc(base_address, HDDRSDRC2_MR,
+		     AT91C_DDRC2_MRS(5) | AT91C_DDRC2_MODE_LPDDR2_CMD);
+	*((unsigned volatile int *)ram_address) = 0;
+
+	/*
+	 * Step 17: A Mode Register Read command with 6 to the MRS field
+	 * is issued to the low-power DDR3-SDRAM.
+	 */
+	write_ddramc(base_address, HDDRSDRC2_MR,
+		     AT91C_DDRC2_MRS(6) | AT91C_DDRC2_MODE_LPDDR2_CMD);
+	*((unsigned volatile int *)ram_address) = 0;
+
+	/*
+	 * Step 18: A Mode Register Read command with 8 to the MRS field
+	 * is issued to the low-power DDR3-SDRAM.
+	 */
+	write_ddramc(base_address, HDDRSDRC2_MR,
+		     AT91C_DDRC2_MRS(8) | AT91C_DDRC2_MODE_LPDDR2_CMD);
+	*((unsigned volatile int *)ram_address) = 0;
+
+	/*
+	 * Step 19: A Mode Register Read command with 0 to the MRS field
+	 * is issued to the low-power DDR3-SDRAM.
+	 */
+	write_ddramc(base_address, HDDRSDRC2_MR,
+		     AT91C_DDRC2_MRS(0) | AT91C_DDRC2_MODE_LPDDR2_CMD);
+	*((unsigned volatile int *)ram_address) = 0;
+
+	/*
+	 * Step 20: A Normal Mode command is provided.
+	 */
+	write_ddramc(base_address, HDDRSDRC2_MR, AT91C_DDRC2_MODE_NORMAL_CMD);
+	*((unsigned int *)ram_address) = 0;
+
+	/*
+	 * Step 21: In the DDR Configuration Register, close the input buffers.
+	 */
+	reg = readl(AT91C_BASE_SFR + SFR_DDRCFG);
+	reg &= ~AT91C_DDRCFG_FDQIEN;
+	reg &= ~AT91C_DDRCFG_FDQSIEN;
+	writel(reg, AT91C_BASE_SFR + SFR_DDRCFG);
+
+	/*
+	 * Step 22: Write the refresh rate into the COUNT field in the MPDDRC
+	 * Refresh Timer Register. The low-power DDR3-SDRAM device requires
+	 * a refresh every 3.9 us.
 	 */
 	write_ddramc(base_address, HDDRSDRC2_RTR, ddramc_config->rtr);
 

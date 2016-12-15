@@ -2,4 +2,7 @@
 # Config.in.boardname for contributed board name
 #
 source "contrib/board/l+g/vinco/Config.in.boardname"
+source "contrib/board/acme/at91sam9x5_aria/Config.in.boardname"
+source "contrib/board/acme/at91sam9x5_arietta/Config.in.boardname"
+source "contrib/board/acme/sama5d3_acqua/Config.in.boardname"
 source "contrib/board/wifx/sama5d4_lorix_one/Config.in.boardname"

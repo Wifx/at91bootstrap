@@ -51,13 +51,13 @@
 static void at91_dbgu_hw_init(void)
 {
 	const struct pio_desc dbgu_pins[] = {
-		{"URXD0", AT91C_PIN_PB(26), 0, PIO_DEFAULT, PIO_PERIPH_C},
-		{"UTXD0", AT91C_PIN_PB(27), 0, PIO_DEFAULT, PIO_PERIPH_C},
+		{"RXD0", CONFIG_SYS_DBGU_RXD_PIN, 0, PIO_DEFAULT, PIO_PERIPH_C},
+		{"TXD0", CONFIG_SYS_DBGU_TXD_PIN, 0, PIO_DEFAULT, PIO_PERIPH_C},
 		{(char *)0, 0, 0, PIO_DEFAULT, PIO_PERIPH_A},
 	};
 
 	pio_configure(dbgu_pins);
-	pmc_sam9x5_enable_periph_clk(AT91C_ID_UART0);
+	pmc_sam9x5_enable_periph_clk(CONFIG_SYS_DBGU_ID);
 }
 
 static void initialize_dbgu(void)
@@ -238,8 +238,8 @@ static int matrix_init(void)
 {
 	int ret;
 
-	matrix_write_disable(AT91C_BASE_MATRIX64);
-	matrix_write_disable(AT91C_BASE_MATRIX32);
+	matrix_write_protect_disable(AT91C_BASE_MATRIX64);
+	matrix_write_protect_disable(AT91C_BASE_MATRIX32);
 
 	ret = matrix_configure_slave();
 	if (ret)
@@ -275,6 +275,19 @@ static void ddramc_reg_config(struct ddramc_register *ddramc_config)
 #ifdef CONFIG_BUS_SPEED_166MHZ
 	/* Refresh Timer is (64ms / 8k) * 166MHz = 1297(0x511) */
 	ddramc_config->rtr = 0x511;
+
+	/*
+	 * According to the sama5d2 datasheet and the following values:
+	 * T Sens = 0.75%/C, V Sens = 0.2%/mV, T driftrate = 1C/sec and V driftrate = 15 mV/s
+	 * Warning: note that the values T driftrate and V driftrate are dependent on
+	 * the application environment.
+	 * ZQCS period is 1.5 / ((0.75 x 1) + (0.2 x 15)) = 0.4s
+	 * If tref is 7.8us, we have: 400000 / 7.8 = 51282(0xC852)
+	 * */
+	ddramc_config->cal_mr4r = AT91C_DDRC2_COUNT_CAL(0xC852);
+
+	/* DDR3 ZQCS */
+	ddramc_config->tim_calr = AT91C_DDRC2_ZQCS(64);
 
 	/* Assume timings for 8ns min clock period */
 	ddramc_config->t0pr = (AT91C_DDRC2_TRAS_(6) |
@@ -323,9 +336,6 @@ static void ddramc_init(void)
 			(AT91C_BASE_MPDDRC + MPDDRC_RD_DATA_PATH));
 
 	ddr3_sdram_initialize(AT91C_BASE_MPDDRC, AT91C_BASE_DDRCS, &ddramc_reg);
-
-	writel(0x3, AT91C_BASE_MPDDRC + MPDDRC_LPDDR2_CAL_MR4);
-	writel(64, AT91C_BASE_MPDDRC + MPDDRC_LPDDR2_TIM_CAL);
 
 	ddramc_dump_regs(AT91C_BASE_MPDDRC);
 }

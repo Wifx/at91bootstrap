@@ -470,6 +470,52 @@ static int sdhc_host_capability(struct sd_card *sdcard)
 	return 0;
 }
 
+static int sdhc_is_card_inserted(struct sd_card *sdcard)
+{
+	/*
+	 * Debouncing of the card detect pin is up to 13ms on sama5d2 rev B
+	 * and later.
+	 * Try to be safe and wait for up to 50ms (50000µs). Let assume
+	 * the PCK (processor clock) frequency is 500MHz, hence 500 cycles/µs.
+	 * 500 * 50000 = 25000000 cycles.
+	 */
+	unsigned int timeout = 25000000;
+	int is_inserted = 0;
+
+	/*
+	 * Enable (unmask) the 'card inserted' bit in the Normal Interrupt
+	 * Status Register.
+	 */
+	sdhc_writew(SDMMC_NISTER, SDMMC_NISTR_CINS);
+
+	/*
+	 * Check whether the 'card inserted' bit is already set in
+	 * the Present State Register.
+	 */
+	if (sdhc_readl(SDMMC_PSR) & SDMMC_PSR_CARDINS) {
+		is_inserted = 1;
+		goto exit;
+	}
+
+	/* Poll the Normal Interrupt Status Register for bit 'card inserted'. */
+	while (!(sdhc_readw(SDMMC_NISTR) & SDMMC_NISTR_CINS) &&
+	       timeout--);
+
+	is_inserted = !!(sdhc_readw(SDMMC_NISTR) & SDMMC_NISTR_CINS);
+
+exit:
+	/*
+	 * Disable (mask) the 'card inserted' bit in the Normal Interrupt
+	 * Status Register.
+	 */
+	sdhc_writew(SDMMC_NISTER, 0);
+
+	/* Clear the pending 'card inserted' interrupt. */
+	sdhc_writew(SDMMC_NISTR, SDMMC_NISTR_CINS);
+
+	return is_inserted;
+}
+
 static int sdhc_init(struct sd_card *sdcard)
 {
 	unsigned int normal_status_mask, error_status_mask;
@@ -479,6 +525,11 @@ static int sdhc_init(struct sd_card *sdcard)
 	sdhc_set_power();
 
 	sdhc_host_capability(sdcard);
+
+	if (sdhc_is_card_inserted(sdcard) <= 0) {
+		dbg_info("SDHC: Error: No Card Inserted\n");
+		return -1;
+	}
 
 	normal_status_mask = SDMMC_NISTR_CMDC
 				| SDMMC_NISTR_TRFC
@@ -497,11 +548,6 @@ static int sdhc_init(struct sd_card *sdcard)
 
 	sdhc_writew(SDMMC_NISIER, 0);
 	sdhc_writew(SDMMC_EISIER, 0);
-
-	if ((sdhc_readl(SDMMC_PSR) & SDMMC_PSR_CARDINS) != SDMMC_PSR_CARDINS) {
-		dbg_info("SDHC: Error: No Card Inserted\n");
-		return -1;
-	}
 
 	sdhc_set_clock(sdcard, 400000);
 	sdhc_set_bus_width(sdcard, 1);

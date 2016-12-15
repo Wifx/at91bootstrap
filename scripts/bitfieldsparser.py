@@ -27,12 +27,12 @@ from pprint import pprint
 
 def find_meaning(maps, bits):
 	'''Conver value to correcpoding bits'''
-	if maps.has_key(bits["name"]):
+	if bits["name"] in maps:
 		start = bits["start"]
 		len = bits["len"]
 		mask = (2 ** len - 1) << start
 
-		if bits.has_key("meaning"):
+		if "meaning" in bits:
 			# find the corresponding name, value in the maps,
 			# then the .json's meaning part, convert it to bit field
 			for name, array in bits["meaning"].items():
@@ -40,7 +40,7 @@ def find_meaning(maps, bits):
 				if maps[bits["name"]] == array[1]:
 					return (int(name) << start) & mask
 
-			print "Error: not found"
+			print("Error: not found")
 		else:
 			# find the corresponding name, value in the maps, and shift as bit field.
 			return (maps[bits["name"]] << start) & mask
@@ -82,8 +82,8 @@ def parse_bitfield(fields, whole_word):
 					meaning_str = bits["meaning"][repr(value)][0]
 
 			if meaning_str == "":
-				print bits["name"], ':', value
+				print(bits["name"], ':', value)
 			else:
-				print bits["name"], ':', value, '->', meaning_str
+				print(bits["name"], ':', value, '->', meaning_str)
 		else:
-			print 'wrong type'
+			print('wrong type')

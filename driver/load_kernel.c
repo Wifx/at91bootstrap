@@ -42,7 +42,7 @@
 
 #include "debug.h"
 
-static char *bootargs = CMDLINE;
+static char *bootargs;
 
 #ifdef CONFIG_OF_LIBFDT
 
@@ -57,7 +57,7 @@ static int setup_dt_blob(void *blob)
 		return -1;
 	}
 
-	dbg_info("\nUsing device tree in place at %d\n",
+	dbg_info("\nUsing device tree in place at %x\n",
 						(unsigned int)blob);
 
 	if (bootargs) {
@@ -206,6 +206,21 @@ static void setup_boot_params(void)
 #endif /* #ifdef CONFIG_OF_LIBFDT */
 
 #if defined(CONFIG_LINUX_IMAGE)
+
+#if defined(CONFIG_QSPI_XIP)
+
+int kernel_size(unsigned char *add)
+{
+	return 0;
+}
+
+static int boot_image_setup(unsigned char *addr, unsigned int *entry)
+{
+	*entry = (unsigned int)addr;
+	return 0;
+}
+#else
+
 /* Linux uImage Header */
 #define LINUX_UIMAGE_MAGIC	0x27051956
 struct linux_uimage_header {
@@ -266,7 +281,7 @@ static int boot_image_setup(unsigned char *addr, unsigned int *entry)
 	unsigned int size;
 	unsigned int magic;
 
-	dbg_loud("try zImage magic: %d is found\n", zimage_header->magic);
+	dbg_loud("try zImage magic: %x is found\n", zimage_header->magic);
 	if (zimage_header->magic == LINUX_ZIMAGE_MAGIC) {
 		dbg_info("\nBooting zImage ......\n");
 		*entry = ((unsigned int)addr + zimage_header->start);
@@ -274,7 +289,7 @@ static int boot_image_setup(unsigned char *addr, unsigned int *entry)
 	}
 
 	magic = swap_uint32(uimage_header->magic);
-	dbg_loud("try uImage magic: %d is found\n", magic);
+	dbg_loud("try uImage magic: %x is found\n", magic);
 	if (magic == LINUX_UIMAGE_MAGIC) {
 		dbg_info("\nBooting uImage ......\n");
 
@@ -287,22 +302,23 @@ static int boot_image_setup(unsigned char *addr, unsigned int *entry)
 		dest = swap_uint32(uimage_header->load);
 		src = (unsigned int)addr + sizeof(struct linux_uimage_header);
 
-		dbg_info("Relocating kernel image, dest: %d, src: %d\n",
+		dbg_info("Relocating kernel image, dest: %x, src: %x\n",
 				dest, src);
 
 		memcpy((void *)dest, (void *)src, size);
 
-		dbg_info(" ...... %d bytes data transferred\n", size);
+		dbg_info(" ...... %x bytes data transferred\n", size);
 
 		*entry = swap_uint32(uimage_header->entry_point);
 		return 0;
 	}
 
-	dbg_info("** Bad uImage magic: %d, zImage magic: %d\n",
+	dbg_info("** Bad uImage magic: %x, zImage magic: %x\n",
 			magic, zimage_header->magic);
 	return -1;
 }
-#endif
+#endif /* !CONFIG_QSPI_XIP */
+#endif /* CONFIG_LINUX_IMAGE */
 
 static int load_kernel_image(struct image_info *image)
 {
@@ -325,9 +341,14 @@ static int load_kernel_image(struct image_info *image)
 	return 0;
 }
 
+__attribute__((weak)) char *board_override_cmd_line(void)
+{
+	return CMDLINE;
+}
+
 int load_kernel(struct image_info *image)
 {
-	unsigned char *addr = image->dest;
+	unsigned char *addr;
 	unsigned int entry_point;
 	unsigned int r2;
 	unsigned int mach_type;
@@ -335,9 +356,7 @@ int load_kernel(struct image_info *image)
 
 	void (*kernel_entry)(int zero, int arch, unsigned int params);
 
-#ifdef CONFIG_OVERRIDE_CMDLINE
 	bootargs = board_override_cmd_line();
-#endif
 
 	ret = load_kernel_image(image);
 	if (ret)
@@ -347,6 +366,7 @@ int load_kernel(struct image_info *image)
 	slowclk_switch_osc32();
 #endif
 
+	addr = image->dest;
 #if defined(CONFIG_LINUX_IMAGE)
 	ret = boot_image_setup(addr, &entry_point);
 #endif
@@ -369,14 +389,14 @@ int load_kernel(struct image_info *image)
 	r2 = (unsigned int)(MEM_BANK + 0x100);
 #endif
 
-	dbg_info("\nStarting linux kernel ..., machid: %d\n\n",
+	dbg_info("\nStarting linux kernel ..., machid: %x\n\n",
 							mach_type);
 #if defined(CONFIG_ENTER_NWD)
 	monitor_init();
 
 	init_loadkernel_args(0, mach_type, r2, (unsigned int)kernel_entry);
 
-	dbg_info("Enter Normal World, Run Kernel at %d\n",
+	dbg_info("Enter Normal World, Run Kernel at %x\n",
 					(unsigned int)kernel_entry);
 
 	enter_normal_world();

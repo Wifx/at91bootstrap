@@ -51,18 +51,18 @@
 static void at91_dbgu_hw_init(void)
 {
 	const struct pio_desc dbgu_pins[] = {
-		{"URXD1", AT91C_PIN_PD(2), 0, PIO_DEFAULT, PIO_PERIPH_A},
-		{"UTXD1", AT91C_PIN_PD(3), 0, PIO_DEFAULT, PIO_PERIPH_A},
+		{"RXD1", CONFIG_SYS_DBGU_RXD_PIN, 0, PIO_DEFAULT, PIO_PERIPH_A},
+		{"TXD1", CONFIG_SYS_DBGU_TXD_PIN, 0, PIO_DEFAULT, PIO_PERIPH_A},
 		{(char *)0, 0, 0, PIO_DEFAULT, PIO_PERIPH_A},
 	};
 
 	pio_configure(dbgu_pins);
-	pmc_sam9x5_enable_periph_clk(AT91C_ID_UART1);
+	pmc_sam9x5_enable_periph_clk(CONFIG_SYS_DBGU_ID);
 }
 
 static void initialize_dbgu(void)
 {
-	unsigned int baudrate = 57600;
+	unsigned int baudrate = 115200;
 
 	at91_dbgu_hw_init();
 
@@ -238,8 +238,8 @@ static int matrix_init(void)
 {
 	int ret;
 
-	matrix_write_disable(AT91C_BASE_MATRIX64);
-	matrix_write_disable(AT91C_BASE_MATRIX32);
+	matrix_write_protect_disable(AT91C_BASE_MATRIX64);
+	matrix_write_protect_disable(AT91C_BASE_MATRIX32);
 
 	ret = matrix_configure_slave();
 	if (ret)
@@ -275,6 +275,19 @@ static void ddramc_reg_config(struct ddramc_register *ddramc_config)
 #ifdef CONFIG_BUS_SPEED_166MHZ
 	/* Refresh Timer is (64ms / 8k) * 166MHz = 1297(0x511) */
 	ddramc_config->rtr = 0x511;
+
+	/*
+	 * According to the sama5d2 datasheet and the following values:
+	 * T Sens = 0.75%/C, V Sens = 0.2%/mV, T driftrate = 1C/sec and V driftrate = 15 mV/s
+	 * Warning: note that the values T driftrate and V driftrate are dependent on
+	 * the application environment.
+	 * ZQCS period is 1.5 / ((0.75 x 1) + (0.2 x 15)) = 0.4s
+	 * If tref is 7.8us, we have: 400000 / 7.8 = 51282(0xC852)
+	 * */
+	ddramc_config->cal_mr4r = AT91C_DDRC2_COUNT_CAL(0xC852);
+
+	/* DDR3 ZQCS */
+	ddramc_config->tim_calr = AT91C_DDRC2_ZQCS(64);
 
 	/* Assume timings for 8ns min clock period */
 	ddramc_config->t0pr = (AT91C_DDRC2_TRAS_(6)
@@ -323,9 +336,6 @@ static void ddramc_init(void)
 			(AT91C_BASE_MPDDRC + MPDDRC_RD_DATA_PATH));
 
 	ddr3_sdram_initialize(AT91C_BASE_MPDDRC, AT91C_BASE_DDRCS, &ddramc_reg);
-
-	writel(0x3, AT91C_BASE_MPDDRC + MPDDRC_LPDDR2_CAL_MR4);
-	writel(64, AT91C_BASE_MPDDRC + MPDDRC_LPDDR2_TIM_CAL);
 
 	ddramc_dump_regs(AT91C_BASE_MPDDRC);
 }
@@ -415,7 +425,164 @@ static void lpddr1_init(void)
 
 	ddramc_dump_regs(AT91C_BASE_MPDDRC);
 }
+
+#elif defined(CONFIG_LPDDR2)
+static void lpddr2_reg_config(struct ddramc_register *ddramc_config)
+{
+	ddramc_config->mdr = (AT91C_DDRC2_DBW_32_BITS |
+			      AT91C_DDRC2_MD_LPDDR2_SDRAM);
+
+	ddramc_config->cr = (AT91C_DDRC2_NC_DDR10_SDR9 |
+			     AT91C_DDRC2_NR_14 |
+			     AT91C_DDRC2_CAS_3 |
+			     AT91C_DDRC2_ZQ_SHORT |
+			     AT91C_DDRC2_NB_BANKS_8 |
+			     AT91C_DDRC2_UNAL_SUPPORTED);
+
+	ddramc_config->lpddr2_lpr = AT91C_LPDDRC2_DS(0x03);
+
+#ifdef CONFIG_BUS_SPEED_166MHZ
+	/*
+	 * The MT42128M32 refresh window: 32ms
+	 * Required number of REFRESH commands(MIN): 8192
+	 * (32ms / 8192) * 166MHz = 0x288.
+	 */
+	ddramc_config->rtr = 0x288;
+	/* 90n short calibration: ZQCS */
+	ddramc_config->tim_calr = AT91C_DDRC2_ZQCS(12);
+
+	ddramc_config->t0pr = (AT91C_DDRC2_TRAS_(7) |
+			       AT91C_DDRC2_TRCD_(3) |
+			       AT91C_DDRC2_TWR_(3) |
+			       AT91C_DDRC2_TRC_(11) |
+			       AT91C_DDRC2_TRP_(4) |
+			       AT91C_DDRC2_TRRD_(2) |
+			       AT91C_DDRC2_TWTR_(2) |
+			       AT91C_DDRC2_TMRD_(3));
+
+	ddramc_config->t1pr = (AT91C_DDRC2_TRFC_(35) |
+				AT91C_DDRC2_TXSNR_(37) |
+				AT91C_DDRC2_TXSRD_(0) |
+				AT91C_DDRC2_TXP_(2));
+
+	ddramc_config->t2pr = (AT91C_DDRC2_TXARD_(0) |
+			       AT91C_DDRC2_TXARDS_(0) |
+			       AT91C_DDRC2_TRPA_(0) |
+			       AT91C_DDRC2_TRTP_(2) |
+			       AT91C_DDRC2_TFAW_(9));
+#else
+#error "No CLK setting defined"
 #endif
+}
+
+static void lpddr2_init(void)
+{
+	struct ddramc_register ddramc_reg;
+	unsigned int reg;
+
+	pmc_enable_periph_clock(AT91C_ID_MPDDRC);
+	pmc_enable_system_clock(AT91C_PMC_DDR);
+
+	reg = readl(AT91C_BASE_MPDDRC + MPDDRC_IO_CALIBR);
+	reg &= ~AT91C_MPDDRC_RDIV;
+	reg &= ~AT91C_MPDDRC_TZQIO;
+	reg |= AT91C_MPDDRC_RDIV_LPDDR2_RZQ_48;
+	reg |= AT91C_MPDDRC_TZQIO_(100);
+	writel(reg, (AT91C_BASE_MPDDRC + MPDDRC_IO_CALIBR));
+
+	writel(AT91C_MPDDRC_RD_DATA_PATH_THREE_CYCLES,
+	       AT91C_BASE_MPDDRC + MPDDRC_RD_DATA_PATH);
+
+	lpddr2_reg_config(&ddramc_reg);
+
+	lpddr2_sdram_initialize(AT91C_BASE_MPDDRC,
+				AT91C_BASE_DDRCS, &ddramc_reg);
+}
+
+#elif defined(CONFIG_LPDDR3)
+static void lpddr3_reg_config(struct ddramc_register *ddramc_config)
+{
+	ddramc_config->mdr = (AT91C_DDRC2_DBW_32_BITS |
+			      AT91C_DDRC2_MD_LPDDR3_SDRAM);
+
+	ddramc_config->cr = (AT91C_DDRC2_NC_DDR10_SDR9 |
+			     AT91C_DDRC2_NR_14 |
+			     AT91C_DDRC2_CAS_3 |
+			     AT91C_DDRC2_ZQ_INIT |
+			     AT91C_DDRC2_NB_BANKS_8 |
+			     AT91C_DDRC2_DECOD_SEQUENTIAL |
+			     AT91C_DDRC2_UNAL_SUPPORTED);
+
+	ddramc_config->lpddr2_lpr = AT91C_LPDDRC2_DS(0x04);
+
+#ifdef CONFIG_BUS_SPEED_166MHZ
+	/* The low-power DDR3-SDRAM device requires a refresh every 3.9 us.*/
+	ddramc_config->rtr = 0x288;
+
+	ddramc_config->t0pr = (AT91C_DDRC2_TRAS_(7) |
+			       AT91C_DDRC2_TRCD_(3) |
+			       AT91C_DDRC2_TWR_(3) |
+			       AT91C_DDRC2_TRC_(11) |
+			       AT91C_DDRC2_TRP_(4) |
+			       AT91C_DDRC2_TRRD_(2) |
+			       AT91C_DDRC2_TWTR_(4) |
+			       AT91C_DDRC2_TMRD_(10));
+
+	ddramc_config->t1pr = (AT91C_DDRC2_TRFC_(35) |
+			       AT91C_DDRC2_TXSNR_(37) |
+			       AT91C_DDRC2_TXSRD_(0) |
+			       AT91C_DDRC2_TXP_(2));
+
+	ddramc_config->t2pr = (AT91C_DDRC2_TXARD_(0) |
+			       AT91C_DDRC2_TXARDS_(0) |
+			       AT91C_DDRC2_TRPA_(0) |
+			       AT91C_DDRC2_TRTP_(4) |
+			       AT91C_DDRC2_TFAW_(9));
+#else
+#error "No CLK setting defined"
+#endif
+}
+
+static void lpddr3_init(void)
+{
+	struct ddramc_register ddramc_reg;
+	unsigned int reg;
+
+	pmc_enable_periph_clock(AT91C_ID_MPDDRC);
+	pmc_enable_system_clock(AT91C_PMC_DDR);
+
+	reg = readl(AT91C_BASE_MPDDRC + MPDDRC_IO_CALIBR);
+	reg &= ~AT91C_MPDDRC_RDIV;
+	reg &= ~AT91C_MPDDRC_TZQIO;
+	reg |= AT91C_MPDDRC_RDIV_LPDDR3_RZQ_57;
+	reg |= AT91C_MPDDRC_TZQIO_(100);
+	writel(reg, (AT91C_BASE_MPDDRC + MPDDRC_IO_CALIBR));
+
+	writel(AT91C_MPDDRC_RD_DATA_PATH_THREE_CYCLES,
+	       AT91C_BASE_MPDDRC + MPDDRC_RD_DATA_PATH);
+
+	lpddr3_reg_config(&ddramc_reg);
+
+	lpddr3_sdram_initialize(AT91C_BASE_MPDDRC,
+				AT91C_BASE_DDRCS, &ddramc_reg);
+}
+#else
+#error "No right DDR-SDRAM device type provided"
+#endif
+
+/**
+ * The MSBs [bits 31:16] of the CAN Message RAM for CAN0 and CAN1
+ * are configured in 0x210000, instead of the default configuration
+ * 0x200000, to avoid conflict with SRAM map for PM.
+ */
+#define CAN_MESSAGE_RAM_MSB	0x21
+
+void at91_init_can_message_ram(void)
+{
+	writel(AT91C_CAN0_MEM_ADDR_(CAN_MESSAGE_RAM_MSB) |
+	       AT91C_CAN1_MEM_ADDR_(CAN_MESSAGE_RAM_MSB),
+	       (AT91C_BASE_SFR + SFR_CAN));
+}
 
 #ifdef CONFIG_HW_INIT
 void hw_init(void)
@@ -461,9 +628,15 @@ void hw_init(void)
 	ddramc_init();
 #elif defined(CONFIG_LPDDR1)
 	lpddr1_init();
+#elif defined(CONFIG_LPDDR2)
+	lpddr2_init();
+#elif defined(CONFIG_LPDDR3)
+	lpddr3_init();
 #endif
 	/* Prepare L2 cache setup */
 	l2cache_prepare();
+
+	at91_init_can_message_ram();
 }
 #endif /* #ifdef CONFIG_HW_INIT */
 
@@ -642,6 +815,7 @@ void at91_sdhc_hw_init(void)
 		{"SDMMC0_DAT7", AT91C_PIN_PA(9), 0, PIO_DEFAULT, PIO_PERIPH_A},
 		{"SDMMC0_RSTN", AT91C_PIN_PA(10), 0, PIO_DEFAULT, PIO_PERIPH_A},
 		{"SDMMC0_VDDSEL", AT91C_PIN_PA(11), 0, PIO_DEFAULT, PIO_PERIPH_A},
+		{"SDMMC0_CD",   AT91C_PIN_PA(13), 0, PIO_DEFAULT, PIO_PERIPH_A},
 		{(char *)0, 0, 0, PIO_DEFAULT, PIO_PERIPH_A},
 	};
 #endif
@@ -690,7 +864,17 @@ unsigned int at91_twi0_hw_init(void)
 #if defined(CONFIG_TWI1)
 unsigned int at91_twi1_hw_init(void)
 {
-	return 0;
+	const struct pio_desc twi_pins[] = {
+		{"TWD1", AT91C_PIN_PD(4), 0, PIO_DEFAULT, PIO_PERIPH_A},
+		{"TWCK1", AT91C_PIN_PD(5), 0, PIO_DEFAULT, PIO_PERIPH_A},
+		{(char *)0, 0, 0, PIO_DEFAULT, PIO_PERIPH_A},
+	};
+
+	pio_configure(twi_pins);
+
+	pmc_sam9x5_enable_periph_clk(AT91C_ID_TWI1);
+
+	return AT91C_BASE_TWI1;
 }
 #endif
 
@@ -698,6 +882,7 @@ unsigned int at91_twi1_hw_init(void)
 void at91_board_config_twi_bus(void)
 {
 	act8865_twi_bus = 0;
+	at24xx_twi_bus = 1;
 }
 #endif
 

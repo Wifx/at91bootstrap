@@ -485,7 +485,7 @@ static int nandflash_detect_onfi(struct nand_chip *chip)
 
 	manf_id = *(unsigned char *)(p + PARAMS_OFFSET_JEDEC_ID);
 	dev_id = *(unsigned char *)(p + PARAMS_OFFSET_MODEL);
-	dbg_info("NAND: Manufacturer ID: %d Chip ID: %d\n", manf_id, dev_id);
+	dbg_info("NAND: Manufacturer ID: %x Chip ID: %x\n", manf_id, dev_id);
 	dbg_info("NAND: Page Bytes: %d, Spare Bytes: %d\n" \
 		 "NAND: ECC Correctability Bits: %d, ECC Sector Bytes: %d\n",
 		 chip->pagesize, chip->oobsize,
@@ -520,13 +520,13 @@ static int nandflash_detect_non_onfi(struct nand_chip *chip)
 	}
 
 	if (i == ARRAY_SIZE(nand_ids)) {
-		dbg_info("NAND: Not found Manufacturer ID: %d," \
-			"Chip ID: %d\n", manf_id, dev_id);
+		dbg_info("NAND: Not found Manufacturer ID: %x," \
+			"Chip ID: %x\n", manf_id, dev_id);
 
 		return -1;
 	}
 
-	dbg_info("NAND: Manufacturer ID: %d Chip ID: %d\n",
+	dbg_info("NAND: Manufacturer ID: %x Chip ID: %x\n",
 						manf_id, dev_id);
 
 	chip->pagesize	= nand_ids[i].pagesize;
@@ -954,6 +954,8 @@ static int nand_loadimage(struct nand_info *nand,
 	unsigned int end_page;
 	unsigned int numpages = 0;
 	unsigned int offsetpage = 0;
+	unsigned int block_remaining = nand->blocksize
+				       - mod(offset, nand->blocksize);
 	int ret;
 
 	division(offset, nand->blocksize, &block, &start_page);
@@ -961,10 +963,10 @@ static int nand_loadimage(struct nand_info *nand,
 
 	while (length > 0) {
 		/* read a buffer corresponding to a block */
-		if (length < nand->blocksize)
+		if (length < block_remaining)
 			readsize = length;
 		else
-			readsize = nand->blocksize;
+			readsize = block_remaining;
 
 		/* adjust the number of pages to read */
 		division(readsize, nand->pagesize, &numpages, &offsetpage);
@@ -979,7 +981,7 @@ static int nand_loadimage(struct nand_info *nand,
 					block, buffer) != 0) {
 				block++; /* skip this block */
 				dbg_info("NAND: Bad block:" \
-					" #%d\n", block);
+					" #%x\n", block);
 			} else
 				break;
 		}
@@ -997,6 +999,7 @@ static int nand_loadimage(struct nand_info *nand,
 
 		block++;
 		start_page = 0;
+		block_remaining = nand->blocksize;
 	}
 
 	return 0;
@@ -1059,7 +1062,7 @@ int load_nandflash(struct image_info *image)
 	image->length = length;
 #endif
 
-	dbg_info("NAND: Image: Copy %d bytes from %d to %d\n",
+	dbg_info("NAND: Image: Copy %x bytes from %x to %x\n",
 			image->length, image->offset, image->dest);
 
 	ret = nand_loadimage(&nand, image->offset, image->length, image->dest);
@@ -1074,7 +1077,7 @@ int load_nandflash(struct image_info *image)
 
 	image->of_length = length;
 
-	dbg_info("NAND: dt blob: Copy %d bytes from %d to %d\n",
+	dbg_info("NAND: dt blob: Copy %x bytes from %x to %x\n",
 		image->of_length, image->of_offset, image->of_dest);
 
 	ret = nand_loadimage(&nand, image->of_offset,

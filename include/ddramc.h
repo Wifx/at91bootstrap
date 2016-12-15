@@ -38,6 +38,7 @@ struct ddramc_register {
 	unsigned int lpr;
 	unsigned int lpddr2_lpr;
 	unsigned int tim_calr;
+	unsigned int cal_mr4r;
 };
 
 extern int ddram_initialize(unsigned int base_address,
@@ -51,6 +52,10 @@ extern int lpddr2_sdram_initialize(unsigned int base_address,
 extern int ddr3_sdram_initialize(unsigned int base_address,
 			unsigned int ram_address,
 			struct ddramc_register *ddramc_config);
+
+extern int lpddr3_sdram_initialize(unsigned int base_address,
+				   unsigned int ram_address,
+				   struct ddramc_register *ddramc_config);
 
 extern int lpddr1_sdram_initialize(unsigned int base_address,
 				   unsigned int ram_address,

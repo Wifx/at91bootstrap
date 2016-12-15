@@ -27,6 +27,7 @@
  */
 #include "usart.h"
 #include "debug.h"
+#include "div.h"
 #include <stdarg.h>
 #include <string.h>
 
@@ -57,6 +58,27 @@ static inline short fill_string(char *buf, char *p)
 	return num;
 }
 
+static inline short fill_dec_int(char *buf, unsigned int data)
+{
+	unsigned char rev[16], *dst;
+	unsigned int q, r;
+	short num = 0;
+
+	dst = rev;
+	q = data;
+	do {
+		division(q, 10, &q, &r);
+		*dst++ = '0' + r;
+		if (dst >= rev + sizeof(rev))
+		  break;
+	} while (q > 0);
+
+	while (--dst >= rev)
+		buf[num++] = *dst;
+	buf[num] = '\0';
+	return num;
+}
+
 static inline short fill_hex_int(char *buf, unsigned int data)
 {
 	short num = 0;
@@ -80,6 +102,7 @@ int dbg_printf(const char *fmt_str, ...)
 	va_list ap;
 
 	char *p = dbg_buf;
+	char fmtstring;
 
 	short num = 0;
 
@@ -92,27 +115,21 @@ int dbg_printf(const char *fmt_str, ...)
 			fmt_str += 2;
 		} else {
 			fmt_str++;	/* skip % */
-			switch (*fmt_str) {
-			case 'p':
-			case 'd':
-			case 'i':
-			case 'u':
-			case 'x':
+			fmtstring = *fmt_str;
+			if ((fmtstring == 'i') ||
+			    (fmtstring == 'd') ||
+			    (fmtstring == 'u')) {
+				num = fill_dec_int(p, va_arg(ap, unsigned int));
+			} else if ((fmtstring == 'p') ||
+				   (fmtstring == 'x')) {
 				*p++ = '0';
 				*p++ = 'x';
 				num = fill_hex_int(p, va_arg(ap, unsigned int));
-
-				break;
-			case 's':
+			} else if (fmtstring == 's') {
 				num = fill_string(p, va_arg(ap, char *));
-
-				break;
-			case 'c':
-				num =
-				    fill_char(p, (char)va_arg(ap, signed long));
-
-				break;
-			default:
+			} else if (fmtstring == 'c') {
+				num = fill_char(p, (char)va_arg(ap, signed long));
+			} else {
 				va_end(ap);
 				return -1;
 			}
