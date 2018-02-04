@@ -49,6 +49,7 @@
 #define	BOARD_ID_SAMA5D4_XULT	17
 #define	BOARD_ID_SAMA5D36_CP	18
 #define	BOARD_ID_SAMA5D2_XULT	19
+#define BOARD_ID_SAMA5D4_LORIX_ONE	99
 
 /* Vendor id definition */
 #define VENDOR_EMBEST		1

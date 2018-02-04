@@ -57,4 +57,8 @@
 #include "sama5d3_linea.h"
 #endif
 
+#ifdef CONFIG_SAMA5D4_LORIX_ONE
+#include "sama5d4_lorix_one.h"
+#endif
+
 #endif
