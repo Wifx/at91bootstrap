@@ -1,0 +1,2 @@
+config CONFIG_BOARDNAME
+	default "sama5d4_lorix_one_512" if CONFIG_SAMA5D4_LORIX_ONE_512

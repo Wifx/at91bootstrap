@@ -61,4 +61,8 @@
 #include "sama5d4_lorix_one.h"
 #endif
 
+#ifdef CONFIG_SAMA5D4_LORIX_ONE_512
+#include "sama5d4_lorix_one_512.h"
+#endif
+
 #endif
