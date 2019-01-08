@@ -65,4 +65,12 @@
 #include "sama5d3_linea.h"
 #endif
 
+#ifdef CONFIG_LORIX_ONE
+#include "lorix_one.h"
+#endif
+
+#ifdef CONFIG_LORIX_ONE_512
+#include "lorix_one_512.h"
+#endif
+
 #endif
