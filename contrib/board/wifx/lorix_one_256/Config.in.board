@@ -1,5 +1,5 @@
-config CONFIG_LORIX_ONE
-	bool "lorix_one"
+config CONFIG_LORIX_ONE_256
+	bool "lorix_one_256"
 	select SAMA5D4
 	select CONFIG_CPU_V7
 	select CONFIG_DDRC

@@ -43,7 +43,7 @@
 #include "arch/at91_ddrsdrc.h"
 #include "arch/at91_sfr.h"
 #include "arch/tz_matrix.h"
-#include "lorix_one.h"
+#include "lorix_one_256.h"
 #include "tz_utils.h"
 #include "l2cc.h"
 #include "matrix.h"
@@ -600,7 +600,7 @@ void hw_init(void)
 #ifdef CONFIG_OF_LIBFDT
 void at91_board_set_dtb_name(char *of_name)
 {
-	strcpy(of_name, "lorix_one.dtb");
+	strcpy(of_name, "lorix_one_256.dtb");
 }
 #endif
  void at91_mci0_hw_init(void)

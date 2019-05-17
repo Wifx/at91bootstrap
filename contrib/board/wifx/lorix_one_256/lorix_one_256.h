@@ -26,8 +26,8 @@
  * NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE,
  * EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
-#ifndef __LORIX_ONE_H__
-#define __LORIX_ONE_H__
+#ifndef __LORIX_ONE_256_H__
+#define __LORIX_ONE_256_H__
  /*
  * PMC Setting
  *
@@ -169,5 +169,4 @@
  */
 #define CONFIG_SYS_BASE_MCI	AT91C_BASE_HSMCI1
 
-#endif /* __LORIX_ONE_H__ */
- 
+#endif /* __LORIX_ONE_256_H__ */

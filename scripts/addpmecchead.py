@@ -19,7 +19,7 @@ elif sys.argv[3] == "at91sam9x5ek" or sys.argv[3] == "at91sam9n12ek":
 	pmecc_word = pmecc_head.gen_pmecc_header(2048, 64, 2, 512)
 elif sys.argv[3] == "core9g25":
 	pmecc_word = pmecc_head.gen_pmecc_header(2048, 64, 2, 512)
-elif sys.argv[3] == "lorix_one":
+elif sys.argv[3] == "lorix_one_256":
 	pmecc_word = pmecc_head.gen_pmecc_header(2048, 64, 4, 512)
 else:
 	sys.exit("Not supported board!")
