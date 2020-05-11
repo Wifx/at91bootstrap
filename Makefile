@@ -48,7 +48,7 @@ else
 endif
 endif
 VERSION := 3.10.2
-REVISION :=
+REVISION := wifx
 SCMINFO := $(shell (host-utilities/setlocalversion))
 
 ifeq ($(SCMINFO),)
