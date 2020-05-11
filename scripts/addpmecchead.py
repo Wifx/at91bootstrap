@@ -25,8 +25,12 @@ elif sys.argv[3] == "sam9x60_sdr_sip_eb":
 	pmecc_word = pmecc_head.gen_pmecc_header(4096, 224, 8, 512)
 elif sys.argv[3] == "core9g25":
 	pmecc_word = pmecc_head.gen_pmecc_header(2048, 64, 2, 512)
+elif sys.argv[3] == "lorix_one_256":
+	pmecc_word = pmecc_head.gen_pmecc_header(2048, 64, 4, 512)
+elif sys.argv[3] == "lorix_one_512":
+	pmecc_word = pmecc_head.gen_pmecc_header(4096, 224, 8, 512)
 else:
-	sys.exit("Not support board!")
+	sys.exit("Not supported board!")
 
 vec = struct.pack("<I", pmecc_word)
 
