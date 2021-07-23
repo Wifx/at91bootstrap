@@ -29,6 +29,8 @@ elif sys.argv[3] == "lorix_one_256":
 	pmecc_word = pmecc_head.gen_pmecc_header(2048, 64, 4, 512)
 elif sys.argv[3] == "lorix_one_512":
 	pmecc_word = pmecc_head.gen_pmecc_header(4096, 224, 8, 512)
+elif sys.argv[3] == "l1":
+	pmecc_word = pmecc_head.gen_pmecc_header(2048, 64, 4, 512)
 else:
 	sys.exit("Not supported board!")
 

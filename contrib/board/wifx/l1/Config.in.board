@@ -1,0 +1,16 @@
+config CONFIG_L1
+	bool "l1"
+	select SAMA5D4
+	select CONFIG_CPU_V7
+	select CONFIG_DDRC
+	select ALLOW_NANDFLASH
+	select ALLOW_SDCARD
+	select ALLOW_CPU_CLK_600MHZ
+	select ALLOW_CRYSTAL_12_000MHZ
+	select CONFIG_HAS_EEPROM
+	select CONFIG_HAS_PMIC_ACT8865
+	select CONFIG_SUPPORT_PM
+	select CONFIG_HAS_EHT0_PHY
+	select SUPPORT_BUS_SPEED_200MHZ
+	help
+	  Use the Wifx L1 LoRa gateway board

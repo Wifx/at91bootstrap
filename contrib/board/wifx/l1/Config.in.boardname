@@ -1,0 +1,2 @@
+config CONFIG_BOARDNAME
+	default "l1" if CONFIG_L1
