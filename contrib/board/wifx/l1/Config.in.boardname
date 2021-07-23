@@ -1,0 +1,2 @@
+config BOARDNAME
+	default "l1" if L1

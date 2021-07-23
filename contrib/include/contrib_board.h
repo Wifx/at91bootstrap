@@ -73,4 +73,8 @@
 #include "lorix_one_512.h"
 #endif
 
+#ifdef CONFIG_L1
+#include "l1.h"
+#endif
+
 #endif
