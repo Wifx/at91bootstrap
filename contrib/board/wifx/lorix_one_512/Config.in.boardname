@@ -1,0 +1,2 @@
+config BOARDNAME
+	default "lorix_one_512" if LORIX_ONE_512

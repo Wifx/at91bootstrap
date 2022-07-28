@@ -1,0 +1,16 @@
+config LORIX_ONE_512
+	bool "lorix_one_512"
+	select SAMA5D4
+	select CPU_V7
+	select DDRC
+	select ALLOW_NANDFLASH
+	select ALLOW_SDCARD
+	select ALLOW_CPU_CLK_600MHZ
+	select ALLOW_CRYSTAL_12_000MHZ
+	select HAS_EEPROM
+	select HAS_PMIC_ACT8865
+	select SUPPORT_PM
+	select HAS_EHT0_PHY
+	select SUPPORT_BUS_SPEED_200MHZ
+	help
+	  Use the Wifx LORIX One LoRa gateway board (512MB NAND version)

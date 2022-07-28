@@ -51,6 +51,8 @@
 #define	BOARD_ID_SAMA5D2_XULT	19
 #define	BOARD_ID_SAMA5D2_ICP	20
 #define	BOARD_ID_SAM9X60_EK	21
+#define BOARD_ID_LORIX_ONE_512	98
+#define BOARD_ID_LORIX_ONE_256	99
 
 /* Vendor id definition */
 #define VENDOR_EMBEST		1
@@ -61,6 +63,7 @@
 #define VENDOR_ATMEL_RFO	6
 #define VENDOR_MCHIP_RFO	7
 #define VENDOR_MCHIP_RDC	8
+#define VENDOR_WIFX		9
 
 #define HW_INFO_TOTAL_SIZE	0x20
 
